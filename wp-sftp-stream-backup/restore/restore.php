@@ -30,10 +30,19 @@ define( 'RS_VERSION', '1.0.0' );
 if ( ! defined( 'RS_DIR' ) ) {
 	define( 'RS_DIR', str_replace( '\\', '/', __DIR__ ) );
 }
-define( 'RS_STATE', RS_DIR . '/wpssb-restore-state.php' );
-define( 'RS_LOCK', RS_DIR . '/wpssb-restore.lock' );
+if ( ! defined( 'RS_STATE' ) ) {
+	define( 'RS_STATE', RS_DIR . '/wpssb-restore-state.php' );
+}
+if ( ! defined( 'RS_LOCK' ) ) {
+	define( 'RS_LOCK', RS_DIR . '/wpssb-restore.lock' );
+}
+if ( ! defined( 'RS_EXTRACTED' ) ) {
+	define( 'RS_EXTRACTED', RS_DIR . '/wpssb-restore-extracted.log' );
+}
 define( 'RS_PROGRESS_TABLE', 'wpssb_restore_progress' );
-define( 'RS_CONFIG_ORIG', 'wp-config.php.wpssb-original' );
+if ( ! defined( 'RS_CONFIG_ORIG' ) ) {
+	define( 'RS_CONFIG_ORIG', 'wp-config.php.wpssb-original' );
+}
 define( 'RS_FILES', 'files.tar.gz' );
 define( 'RS_DB', 'database.sql.gz' );
 define( 'RS_MANIFEST_EXPLICIT', defined( 'RS_MANIFEST' ) );
@@ -85,13 +94,59 @@ class RsFileSource {
 	}
 }
 
+/** Backup objects stored as files in a local directory. */
+class RsLocalStore {
+	private $dir;
+
+	public function __construct( $dir ) {
+		$this->dir = rtrim( str_replace( '\\', '/', (string) $dir ), '/' );
+	}
+
+	public function local() {
+		return true;
+	}
+
+	public function dir() {
+		return $this->dir;
+	}
+
+	public function exists( $name ) {
+		return file_exists( $this->dir . '/' . $name );
+	}
+
+	public function object( $name, $limit ) {
+		return RsPartsSource::object( $this->dir . '/' . $name, $limit );
+	}
+
+	public function checkPart( $name, $size ) {
+		$file = $this->dir . '/' . $name;
+		clearstatcache( true, $file );
+		if ( is_link( $file ) || ! is_file( $file ) || ! is_readable( $file ) || filesize( $file ) !== $size ) {
+			throw new RuntimeException( 'Missing or truncated backup part: ' . $name );
+		}
+	}
+
+	public function source( $name ) {
+		return new RsFileSource( $this->dir . '/' . $name );
+	}
+}
+
+/** Store used for archives and manifests: local by default, remote for one-click restores. */
+function rs_store() {
+	if ( empty( $GLOBALS['rs_store'] ) ) {
+		$GLOBALS['rs_store'] = new RsLocalStore( RS_DIR );
+	}
+	return $GLOBALS['rs_store'];
+}
+
 /** Seekable compressed bytes, holding only one catalog page and one payload object. */
 class RsPartsSource {
 	const PART_BYTES = 8388608;
 	const PAGE_PARTS = 256;
 	const PAGE_BYTES = 262144;
 
-	private $path;
+	private $name;
+	private $store;
 	private $prefix;
 	private $head;
 	private $page;
@@ -129,13 +184,14 @@ class RsPartsSource {
 		return is_string( $value ) && 1 === preg_match( '/\A[0-9a-f]{64}\z/D', $value );
 	}
 
-	public function __construct( $path, $prefix = '', $head_hash = null ) {
+	public function __construct( $path, $prefix = '', $head_hash = null, $store = null ) {
 		if ( ! self::flatName( basename( $path ) ) || ( '' !== $prefix && ! self::flatName( $prefix ) ) ) {
 			throw new RuntimeException( 'Unsafe backup object name.' );
 		}
-		$this->path = $path;
+		$this->name = basename( $path );
+		$this->store = $store ? $store : new RsLocalStore( dirname( $path ) );
 		$this->prefix = $prefix;
-		$json = self::object( $path . '.parts.json', 4096 );
+		$json = $this->store->object( $this->name . '.parts.json', 4096 );
 		if ( null !== $head_hash && ( ! self::digest( $head_hash ) || ! hash_equals( $head_hash, hash( 'sha256', $json ) ) ) ) {
 			throw new RuntimeException( 'Backup head checksum does not match the manifest.' );
 		}
@@ -158,11 +214,7 @@ class RsPartsSource {
 				if ( $part['offset'] !== $offset || $part['size'] > $h['bytes'] - $offset ) {
 					throw new RuntimeException( 'Invalid backup part offset or size.' );
 				}
-				$file = $this->partPath( $part );
-				clearstatcache( true, $file );
-				if ( is_link( $file ) || ! is_file( $file ) || ! is_readable( $file ) || filesize( $file ) !== $part['size'] ) {
-					throw new RuntimeException( 'Missing or truncated backup part: ' . basename( $file ) );
-				}
+				$this->store->checkPart( $this->partName( $part ), $part['size'] );
 				$offset += $part['size'];
 			}
 			$previous = $hash;
@@ -176,20 +228,20 @@ class RsPartsSource {
 		return $this->head['count'] ? intdiv( $this->head['count'] - 1, self::PAGE_PARTS ) + 1 : 0;
 	}
 
-	private function pagePath( $number ) {
-		return $this->path . '.index-' . sprintf( '%08d', $number ) . '.json';
+	private function pageName( $number ) {
+		return $this->name . '.index-' . sprintf( '%08d', $number ) . '.json';
 	}
 
-	private function partPath( array $part ) {
+	private function partName( array $part ) {
 		$name = $this->prefix . $part['file'];
 		if ( ! self::flatName( $name ) ) {
 			throw new RuntimeException( 'Unsafe backup part name.' );
 		}
-		return dirname( $this->path ) . '/' . $name;
+		return $name;
 	}
 
 	private function loadPage( $number ) {
-		$json = self::object( $this->pagePath( $number ), self::PAGE_BYTES );
+		$json = $this->store->object( $this->pageName( $number ), self::PAGE_BYTES );
 		$page = self::decode( $json );
 		$count = min( self::PAGE_PARTS, $this->head['count'] - $number * self::PAGE_PARTS );
 		if ( ! isset( $page['previous'], $page['parts'] ) || ! is_string( $page['previous'] ) ||
@@ -203,7 +255,7 @@ class RsPartsSource {
 				! is_int( $part['offset'] ) || $part['offset'] < 0 || ! self::digest( $part['sha256'] ) ) {
 				throw new RuntimeException( 'Invalid backup part descriptor.' );
 			}
-			$this->partPath( $part );
+			$this->partName( $part );
 		}
 		return array( $page, hash( 'sha256', $json ) );
 	}
@@ -250,7 +302,7 @@ class RsPartsSource {
 					foreach ( $this->page['parts'] as $part ) {
 						if ( $part['offset'] <= $this->position && $this->position - $part['offset'] < $part['size'] ) {
 							$this->part = '';
-							$data = self::object( $this->partPath( $part ), self::PART_BYTES );
+							$data = $this->store->object( $this->partName( $part ), self::PART_BYTES );
 							if ( strlen( $data ) !== $part['size'] || ! hash_equals( $part['sha256'], hash( 'sha256', $data ) ) ) {
 								throw new RuntimeException( 'Backup part checksum mismatch: ' . $part['file'] );
 							}
@@ -277,11 +329,11 @@ class RsPartsSource {
 		for ( $i = 0; $i < $this->pageCount(); $i++ ) {
 			list( $page ) = $this->loadPage( $i );
 			foreach ( $page['parts'] as $part ) {
-				yield basename( $this->partPath( $part ) );
+				yield $this->partName( $part );
 			}
-			yield basename( $this->pagePath( $i ) );
+			yield $this->pageName( $i );
 		}
-		yield basename( $this->path . '.parts.json' );
+		yield $this->name . '.parts.json';
 	}
 }
 
@@ -604,15 +656,19 @@ function rs_safe_path( $name ) {
 }
 
 function rs_protected_names() {
-	return array( basename( __FILE__ ), basename( RS_STATE ), basename( RS_STATE ) . '.tmp', basename( RS_LOCK ), RS_CONFIG_ORIG, RS_FILES, RS_DB, RS_MANIFEST, basename( rs_manifest_file() ) );
+	return array( basename( __FILE__ ), basename( RS_STATE ), basename( RS_STATE ) . '.tmp', basename( RS_LOCK ), basename( RS_EXTRACTED ), RS_CONFIG_ORIG, RS_FILES, RS_DB, RS_MANIFEST, basename( rs_manifest_file() ) );
 }
 
+/** True when $name equals one of $names (paths relative to RS_DIR) or lies below it. */
 function rs_is_protected( $name, array $names, array $sources ) {
-	$root = explode( '/', $name, 2 )[0];
-	if ( in_array( $root, $names, true ) ) {
-		return true;
+	foreach ( $names as $protected ) {
+		$protected = (string) $protected;
+		if ( '' !== $protected && ( $name === $protected || 0 === strpos( $name, $protected . '/' ) ) ) {
+			return true;
+		}
 	}
-	if ( is_dir( RS_DIR . '/' . $root ) || ! file_exists( RS_DIR . '/' . $root ) ) {
+	$root = explode( '/', $name, 2 )[0];
+	if ( ! rs_store()->local() || is_dir( RS_DIR . '/' . $root ) || ! file_exists( RS_DIR . '/' . $root ) ) {
 		return false;
 	}
 	foreach ( $sources as $source ) {
@@ -697,7 +753,7 @@ function rs_manifest_file() {
 	if ( ! RsPartsSource::flatName( RS_MANIFEST ) ) {
 		throw new RuntimeException( 'Unsafe manifest filename.' );
 	}
-	if ( RS_MANIFEST_EXPLICIT ) {
+	if ( RS_MANIFEST_EXPLICIT || ! rs_store()->local() ) {
 		return RS_DIR . '/' . RS_MANIFEST;
 	}
 	$script = basename( __FILE__ );
@@ -719,12 +775,22 @@ function rs_manifest_file() {
 	return $matches ? $matches[0] : RS_DIR . '/' . RS_MANIFEST;
 }
 
+/** Raw manifest bytes, null when the selected manifest does not exist. */
+function rs_manifest_raw() {
+	$name = basename( rs_manifest_file() );
+	$store = rs_store();
+	if ( ! $store->exists( $name ) ) {
+		return null;
+	}
+	return $store->object( $name, 1048576 );
+}
+
 function rs_manifest() {
-	$file = rs_manifest_file();
-	if ( ! file_exists( $file ) ) {
+	$raw = rs_manifest_raw();
+	if ( null === $raw ) {
 		return array();
 	}
-	$data = json_decode( RsPartsSource::object( $file, 1048576 ), true );
+	$data = json_decode( $raw, true );
 	if ( ! is_array( $data ) || JSON_ERROR_NONE !== json_last_error() ||
 		( isset( $data['format'] ) && ! in_array( $data['format'], array( 1, 2 ), true ) ) ) {
 		throw new RuntimeException( 'Invalid or unsupported backup manifest.' );
@@ -742,15 +808,15 @@ function rs_archive_source( $path ) {
 		return new RsFileSource( $path );
 	}
 	$manifest = rs_manifest();
+	$prefix = isset( $manifest['object_prefix'] ) ? $manifest['object_prefix'] : '';
 	if ( 2 !== ( isset( $manifest['format'] ) ? $manifest['format'] : 1 ) ) {
-		return new RsFileSource( $path );
+		return rs_store()->local() ? new RsFileSource( $path ) : rs_store()->source( $prefix . $name );
 	}
 	$key = RS_FILES === $name ? 'files' : 'database';
 	if ( ! isset( $manifest[ $key ]['parts_sha256'] ) ) {
 		throw new RuntimeException( 'Format 2 manifest is missing the ' . $key . ' head checksum.' );
 	}
-	$prefix = isset( $manifest['object_prefix'] ) ? $manifest['object_prefix'] : '';
-	$source = new RsPartsSource( RS_DIR . '/' . $prefix . $name, $prefix, $manifest[ $key ]['parts_sha256'] );
+	$source = new RsPartsSource( RS_DIR . '/' . $prefix . $name, $prefix, $manifest[ $key ]['parts_sha256'], rs_store() );
 	if ( isset( $manifest[ $key ]['bytes'] ) && $manifest[ $key ]['bytes'] !== $source->size() ) {
 		throw new RuntimeException( 'Archive size does not match the manifest.' );
 	}
@@ -873,10 +939,20 @@ function rs_new_state( array $opts ) {
 		}
 	}
 
+	$keep = array();
+	foreach ( isset( $opts['keep'] ) ? (array) $opts['keep'] : array() as $path ) {
+		$path = rs_safe_path( $path );
+		if ( null !== $path ) {
+			$keep[] = $path;
+		}
+	}
+	$rollback = isset( $opts['mode'] ) && 'rollback' === $opts['mode'];
+
 	return array(
 		'version'  => RS_VERSION,
+		'mode'     => $rollback ? 'rollback' : 'restore',
 		'manifest_file' => basename( rs_manifest_file() ),
-		'manifest_sha256' => $manifest ? hash_file( 'sha256', rs_manifest_file() ) : '',
+		'manifest_sha256' => $manifest ? hash( 'sha256', (string) rs_manifest_raw() ) : '',
 		'phase'    => 'extract',
 		'db'       => array(
 			'host' => (string) $opts['db_host'],
@@ -888,6 +964,16 @@ function rs_new_state( array $opts ) {
 		'url'      => $new_home,
 		'pairs'    => $pairs,
 		'delete_archives' => ! empty( $opts['delete_archives'] ),
+		'keep'     => $keep,
+		'keep_config' => $rollback || ! empty( $opts['keep_config'] ),
+		'preserve_options' => $rollback && isset( $opts['preserve_options'] ) ? (array) $opts['preserve_options'] : array(),
+		'sweep'    => $rollback ? array(
+			'exclude'        => array_values( array_filter( array_map( 'strval', isset( $opts['exclude'] ) ? (array) $opts['exclude'] : array() ), 'strlen' ) ),
+			'exclude_tables' => array_values( array_map( 'strval', isset( $opts['exclude_tables'] ) ? (array) $opts['exclude_tables'] : array() ) ),
+			'files_done'     => false,
+			'files'          => 0,
+			'tables'         => 0,
+		) : null,
 		'tar'      => array(
 			'c'        => 0,
 			'u'        => 0,
@@ -897,6 +983,7 @@ function rs_new_state( array $opts ) {
 			'longname' => null,
 			'count'    => 0,
 			'skipped'  => 0,
+			'logged'   => 0,
 		),
 		'sql'      => array(
 			'c'          => 0,
@@ -906,6 +993,7 @@ function rs_new_state( array $opts ) {
 			'charset'    => 'utf8mb4',
 			'table'      => null,
 			'dirty'      => false,
+			'tables'     => array(),
 		),
 		'replace'  => array(
 			'tables' => null,
@@ -931,12 +1019,18 @@ function rs_step( array &$state, $deadline ) {
 		case 'import':
 			if ( rs_import( $state, $deadline ) ) {
 				rs_log( $state, sprintf( 'Database imported: %d statements.', $state['sql']['statements'] ) );
-				$state['phase'] = $state['pairs'] ? 'replace' : 'config';
+				$state['phase'] = $state['pairs'] ? 'replace' : ( empty( $state['sweep'] ) ? 'config' : 'sweep' );
 			}
 			break;
 		case 'replace':
 			if ( rs_replace( $state, $deadline ) ) {
 				rs_log( $state, sprintf( 'URLs/paths updated in %d rows.', $state['replace']['rows'] ) );
+				$state['phase'] = empty( $state['sweep'] ) ? 'config' : 'sweep';
+			}
+			break;
+		case 'sweep':
+			if ( rs_sweep( $state, $deadline ) ) {
+				rs_log( $state, sprintf( 'Removed %d files/directories and %d tables not present in the backup.', $state['sweep']['files'], $state['sweep']['tables'] ) );
 				$state['phase'] = 'config';
 			}
 			break;
@@ -951,7 +1045,7 @@ function rs_step( array &$state, $deadline ) {
 function rs_assert_manifest( array $state ) {
 	if ( ! empty( $state['manifest_sha256'] ) &&
 		( basename( rs_manifest_file() ) !== $state['manifest_file'] ||
-			! hash_equals( $state['manifest_sha256'], hash( 'sha256', RsPartsSource::object( rs_manifest_file(), 1048576 ) ) ) ) ) {
+			! hash_equals( $state['manifest_sha256'], hash( 'sha256', (string) rs_manifest_raw() ) ) ) ) {
 		throw new RuntimeException( 'Selected backup manifest changed; reset the restore before selecting another backup.' );
 	}
 }
@@ -973,11 +1067,18 @@ function rs_extract( array &$state, $deadline ) {
 	$archive  = RS_DIR . '/' . RS_FILES;
 	$reader   = new RsGzReader( $archive, $t['c'], $t['u'], $t['pos'] );
 	$verified = array();
-	$protect  = rs_protected_names();
-	$sources  = rs_parts_sources();
+	$protect  = array_merge( rs_protected_names(), isset( $state['keep'] ) ? (array) $state['keep'] : array() );
+	$sources  = rs_store()->local() ? rs_parts_sources() : array();
 	$total    = max( 1, $reader->compressedSize() );
 	$done     = false;
 	$handle   = null;
+	$log      = null;
+	if ( ! empty( $state['sweep'] ) ) {
+		$log = @fopen( RS_EXTRACTED, 'ab' );
+		if ( ! $log ) {
+			throw new RuntimeException( 'Cannot write the list of restored paths.' );
+		}
+	}
 
 	try {
 		$first = true;
@@ -1002,7 +1103,12 @@ function rs_extract( array &$state, $deadline ) {
 					if ( 'file' === $e['type'] ) {
 						if ( null === $handle ) {
 							$abs    = RS_DIR . '/' . $e['path'];
-							$handle = @fopen( $abs, $e['remaining'] === $e['size'] ? 'wb' : 'cb' );
+							$mode   = $e['remaining'] === $e['size'] ? 'wb' : 'cb';
+							$handle = @fopen( $abs, $mode );
+							// A file owned by another user (e.g. left by a root CLI run) can still be replaced when its directory is writable.
+							if ( ! $handle && 'wb' === $mode && is_file( $abs ) && ! is_link( $abs ) && @unlink( $abs ) ) {
+								$handle = @fopen( $abs, 'wb' );
+							}
 							if ( ! $handle ) {
 								throw new RuntimeException( 'Cannot write ' . $e['path'] );
 							}
@@ -1152,11 +1258,20 @@ function rs_extract( array &$state, $deadline ) {
 			} else {
 				$t['skipped']++;
 			}
+			if ( $log && 'skip' !== $entry['type'] ) {
+				if ( false === fwrite( $log, $rel . "\n" ) ) {
+					throw new RuntimeException( 'Cannot write the list of restored paths.' );
+				}
+				$t['logged'] = ( isset( $t['logged'] ) ? $t['logged'] : 0 ) + 1;
+			}
 			$t['entry'] = $entry;
 		}
 	} finally {
 		if ( $handle ) {
 			fclose( $handle );
+		}
+		if ( $log ) {
+			fclose( $log );
 		}
 	}
 
@@ -1242,6 +1357,15 @@ function rs_import( array &$state, $deadline ) {
 			} else {
 				if ( 0 === stripos( $sql, 'DROP TABLE IF EXISTS ' ) ) {
 					$s['table'] = array_merge( $reader->checkpoint( $start ), array( $start ) );
+					if ( preg_match( '/^DROP TABLE IF EXISTS `((?:[^`]|``)+)`/i', $sql, $tm ) ) {
+						$tname = str_replace( '``', '`', $tm[1] );
+						if ( ! isset( $s['tables'] ) ) {
+							$s['tables'] = array();
+						}
+						if ( ! in_array( $tname, $s['tables'], true ) ) {
+							$s['tables'][] = $tname;
+						}
+					}
 				}
 				rs_exec( $db, $sql );
 			}
@@ -1262,6 +1386,12 @@ function rs_import( array &$state, $deadline ) {
 		if ( '' !== $prefix ) {
 			$table = '`' . str_replace( '`', '``', $prefix . 'options' ) . '`';
 			@$db->query( "DELETE FROM {$table} WHERE option_name IN ('wpssb_job','wpssb_lock','wpssb_cancel')" );
+			// Rollback: the plugin keeps its current settings and the history of newer backups.
+			foreach ( isset( $state['preserve_options'] ) ? (array) $state['preserve_options'] : array() as $name => $row ) {
+				$name = $db->real_escape_string( (string) $name );
+				rs_exec( $db, "DELETE FROM {$table} WHERE option_name = '{$name}'" );
+				rs_exec( $db, "INSERT INTO {$table} (option_name, option_value, autoload) VALUES ('{$name}', '" . $db->real_escape_string( (string) $row[0] ) . "', '" . $db->real_escape_string( (string) $row[1] ) . "')" );
+			}
 		}
 	}
 	$db->close();
@@ -1404,6 +1534,112 @@ function rs_replace( array &$state, $deadline ) {
 	return $finished;
 }
 
+/** Rollback only: removes files and prefixed tables that are not part of the restored backup. */
+function rs_sweep( array &$state, $deadline ) {
+	$w = &$state['sweep'];
+	if ( empty( $w['files_done'] ) ) {
+		$set = array();
+		$fh = @fopen( RS_EXTRACTED, 'rb' );
+		if ( ! $fh ) {
+			throw new RuntimeException( 'The list of restored paths is missing: refusing to remove files.' );
+		}
+		$lines = 0;
+		while ( false !== ( $line = fgets( $fh ) ) ) {
+			$rel = rtrim( $line, "\r\n" );
+			if ( '' !== $rel ) {
+				$set[ $rel ] = true;
+				$lines++;
+			}
+		}
+		fclose( $fh );
+		if ( ! $set || $lines < (int) $state['tar']['logged'] ) {
+			throw new RuntimeException( 'The list of restored paths is incomplete: refusing to remove files.' );
+		}
+		foreach ( array_keys( $set ) as $rel ) {
+			while ( false !== ( $p = strrpos( $rel, '/' ) ) ) {
+				$rel = substr( $rel, 0, $p );
+				$set[ $rel ] = true;
+			}
+		}
+		$skip = array_merge( rs_protected_names(), (array) $state['keep'] );
+		@set_time_limit( 600 );
+		$w['files'] += rs_sweep_dir( '', $set, $skip, $w['exclude'] );
+		$w['files_done'] = true;
+		rs_save_state( $state );
+	}
+
+	$dumped = isset( $state['sql']['tables'] ) ? (array) $state['sql']['tables'] : array();
+	$prefix = (string) $state['prefix'];
+	if ( '' === $prefix || ! in_array( $prefix . 'options', $dumped, true ) ) {
+		rs_log( $state, 'WARNING: table list of the backup unavailable; extra tables were not removed.' );
+		return true;
+	}
+	$db  = rs_db( $state );
+	$res = $db->query( "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'" );
+	$drop = array();
+	while ( $res && ( $row = $res->fetch_row() ) ) {
+		$name = (string) $row[0];
+		if ( 0 === strpos( $name, $prefix ) && RS_PROGRESS_TABLE !== $name && ! in_array( $name, $dumped, true ) && ! in_array( $name, $w['exclude_tables'], true ) ) {
+			$drop[] = $name;
+		}
+	}
+	foreach ( $drop as $name ) {
+		rs_exec( $db, 'DROP TABLE IF EXISTS `' . str_replace( '`', '``', $name ) . '`' );
+		rs_log( $state, 'Dropped table not present in the backup: ' . $name );
+		$w['tables']++;
+	}
+	$db->close();
+	$state['progress'] = 100;
+	return true;
+}
+
+function rs_sweep_excluded( $rel, array $patterns ) {
+	foreach ( $patterns as $pattern ) {
+		$pattern = trim( str_replace( '\\', '/', (string) $pattern ), '/' );
+		if ( '' === $pattern ) {
+			continue;
+		}
+		if ( $rel === $pattern || 0 === strpos( $rel, $pattern . '/' ) ) {
+			return true;
+		}
+		if ( false !== strpbrk( $pattern, '*?[' ) && fnmatch( $pattern, $rel ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/** @return int Number of removed entries below $dir (relative to RS_DIR). */
+function rs_sweep_dir( $dir, array $set, array $skip, array $exclude ) {
+	$abs_dir = '' === $dir ? RS_DIR : RS_DIR . '/' . $dir;
+	$names = @scandir( $abs_dir );
+	if ( false === $names ) {
+		return 0;
+	}
+	$removed = 0;
+	foreach ( $names as $name ) {
+		if ( '.' === $name || '..' === $name ) {
+			continue;
+		}
+		$rel = '' === $dir ? $name : $dir . '/' . $name;
+		if ( ( '' === $dir && '.maintenance' === $name ) || rs_is_protected( $rel, $skip, array() ) || rs_sweep_excluded( $rel, $exclude ) ) {
+			continue;
+		}
+		$abs = $abs_dir . '/' . $name;
+		if ( is_link( $abs ) || ! is_dir( $abs ) ) {
+			if ( ! isset( $set[ $rel ] ) && @unlink( $abs ) ) {
+				$removed++;
+			}
+			continue;
+		}
+		$removed += rs_sweep_dir( $rel, $set, $skip, $exclude );
+		if ( ! isset( $set[ $rel ] ) && @rmdir( $abs ) ) {
+			$removed++;
+		}
+	}
+	return $removed;
+}
+
 function rs_config( array &$state ) {
 	// The search/replace progress table is kept until here so that a replayed final
 	// replace step still finds its "finished" marker.
@@ -1411,6 +1647,10 @@ function rs_config( array &$state ) {
 	rs_exec( $db, 'DROP TABLE IF EXISTS `' . RS_PROGRESS_TABLE . '`' );
 	$db->close();
 
+	if ( ! empty( $state['keep_config'] ) ) {
+		rs_log( $state, 'Current wp-config.php kept unchanged.' );
+		return;
+	}
 	$file = RS_DIR . '/wp-config.php';
 	if ( ! is_file( $file ) ) {
 		rs_log( $state, 'WARNING: wp-config.php not found in the archive; create it manually.' );
@@ -1456,7 +1696,7 @@ function rs_config( array &$state ) {
 
 function rs_cleanup( array $state, $self_delete ) {
 	rs_assert_manifest( $state );
-	if ( ! empty( $state['delete_archives'] ) ) {
+	if ( ! empty( $state['delete_archives'] ) && rs_store()->local() ) {
 		$sources = rs_parts_sources();
 		if ( $sources ) {
 			foreach ( $sources as $source ) {
@@ -1473,6 +1713,7 @@ function rs_cleanup( array $state, $self_delete ) {
 	@unlink( RS_STATE );
 	@unlink( RS_STATE . '.tmp' );
 	@unlink( RS_LOCK );
+	@unlink( RS_EXTRACTED );
 	@unlink( RS_DIR . '/' . RS_CONFIG_ORIG );
 	if ( $self_delete ) {
 		@unlink( __FILE__ );

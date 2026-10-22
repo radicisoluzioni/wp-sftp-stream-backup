@@ -87,7 +87,8 @@ class Runner {
 			'remote_dir'    => $base . '/' . $name,
 			'compression'   => (int) $settings['compression'],
 			'retention'     => (int) $settings['retention'],
-			'exclude_paths' => Exclusions::fromText( (string) $settings['exclude_paths'] )->patterns(),
+			'exclude_paths' => Exclusions::fromText( (string) $settings['exclude_paths'] . "\nwpssb-restore-*\nwpssb-installer.php\n.wpssb-installer-attempts.php" )->patterns(),
+			'exclude_tables' => array_values( (array) $settings['exclude_tables'] ),
 			'db'            => array(
 				'offset' => 0,
 				'cursor' => Dumper::initialCursor( $tables ),
@@ -404,6 +405,7 @@ class Runner {
 				'raw_bytes' => (int) $state['files']['raw_bytes'],
 			),
 			'exclude_paths'  => $state['exclude_paths'],
+			'exclude_tables' => $state['exclude_tables'] ?? array(),
 			'warnings'       => (int) $state['warnings'],
 		);
 	}

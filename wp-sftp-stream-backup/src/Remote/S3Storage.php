@@ -227,7 +227,8 @@ class S3Storage implements ObjectStorage {
 				'data_format' => 'body',
 			) );
 		} catch ( \Throwable $e ) {
-			throw new RemoteException( 'S3 HTTP transport failed.' );
+			// Only the restore runtime's fixed cURL errno message is safe to surface.
+			throw new RemoteException( preg_match( '/\AHTTP request failed \(cURL error (\d+)\)\.\z/', $e->getMessage(), $m ) ? 'S3 HTTP transport failed (cURL error ' . $m[1] . ').' : 'S3 HTTP transport failed.' );
 		}
 		if ( $response instanceof \WP_Error || ! is_array( $response ) || ! isset( $response['response']['code'] ) ) {
 			throw new RemoteException( 'S3 HTTP transport failed.' );

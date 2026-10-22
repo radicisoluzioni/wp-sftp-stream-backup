@@ -249,6 +249,15 @@ class S3StorageTest extends TestCase {
 		$storage->get( 'key' );
 	}
 
+	public function testRuntimeCurlErrnoIsSurfaced(): void {
+		$storage = new S3Storage( $this->config(), function () {
+			throw new \RuntimeException( 'HTTP request failed (cURL error 56).' );
+		} );
+		$this->expectException( RemoteException::class );
+		$this->expectExceptionMessage( 'S3 HTTP transport failed (cURL error 56).' );
+		$storage->get( 'key' );
+	}
+
 	public function testMalformedTransportResponse(): void {
 		$storage = new S3Storage( $this->config(), function () {
 			return new \stdClass();

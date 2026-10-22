@@ -4,6 +4,9 @@ Plugin WordPress per backup completi (database + file) inviati a **SFTP, S3 e Ne
 
 **Coded by [Radici Soluzioni Informatiche](https://radici.biz)**
 
+**Novita 1.2:** [ripristino one click](#ripristino-one-click-12) direttamente dal
+repository, per tornare a un backup o migrare il sito su un nuovo server.
+
 [Scarica l'ultima release](https://github.com/radicisoluzioni/wp-sftp-stream-backup/releases/latest) ·
 [Guida all'installazione](#installazione) · Licenza GPLv2 o successiva
 
@@ -292,6 +295,8 @@ wp stream-backup list [--repository=ID]
 wp stream-backup retry
 wp stream-backup abandon
 wp stream-backup cancel
+wp stream-backup restore <percorso> [--repository=ID] [--yes]
+wp stream-backup migration-code <percorso> [--repository=ID] [--days=7] [--installer=FILE]
 ```
 
 L'alias storico `wp sftp-backup` resta disponibile.
@@ -314,7 +319,69 @@ L'alias storico `wp sftp-backup` resta disponibile.
 | Nuovi backup bloccati | risolvi le repliche fallite con *Retry failed copies* o abbandonale esplicitamente |
 | Memoria esaurita con tabelle molto grandi | aumenta `memory_limit` di PHP |
 
-## Ripristino
+## Ripristino one click (1.2)
+
+Dalla 1.2 il ripristino non richiede piu di scaricare e caricare archivi: il
+backup viene letto **in streaming direttamente dal repository** (SFTP, S3 o
+Nextcloud WebDAV; non da un File Drop pubblico, che e solo in scrittura).
+
+### Rollback del sito
+
+1. Apri *Strumenti → SFTP Backup* e premi *Load list* in *Backups on the server*.
+2. Premi **Restore** sulla riga del backup e digita il dominio del sito per confermare.
+3. Si apre la pagina di ripristino (temporanea, protetta da token): premi
+   *Start restore* e lascia aperta la pagina fino al termine.
+
+Da shell, ad esempio da cron o SSH:
+
+```bash
+wp stream-backup list --repository=ID
+wp stream-backup restore <percorso-backup> --repository=ID --yes
+```
+
+Cosa succede:
+- il sito resta in manutenzione durante il ripristino;
+- file e tabelle **non presenti** nel backup vengono rimossi, ma percorsi e tabelle esclusi restano intatti;
+- `wp-config.php`, impostazioni del plugin, repository e storico dei backup vengono mantenuti;
+- l'operazione e a passaggi e riprendibile (*Retry*); a fine lavoro i file temporanei `wpssb-restore-*` si cancellano da soli;
+- **non** viene fatta una copia di sicurezza automatica: se serve, lancia prima un backup.
+
+### Migrazione su un nuovo server
+
+1. Sul sito di origine premi **Migrate** sulla riga del backup, scegli una password
+   (minimo 12 caratteri) e una validita (1–30 giorni).
+2. Premi *Download installer with this code*: ottieni `wpssb-installer.php` con il
+   codice di migrazione cifrato (AES-256-GCM, chiave derivata dalla password).
+3. Sul nuovo server crea un database vuoto e carica `wpssb-installer.php` nella radice web vuota.
+4. Apri `https://nuovo-sito/wpssb-installer.php`, inserisci password e dati del
+   database: il backup viene scaricato in streaming, gli URL vengono riscritti e
+   l'installer si cancella da solo.
+
+In alternativa da shell sul nuovo server:
+
+```bash
+WPSSB_MIGRATION_PASSWORD='la-password' php wpssb-installer.php \
+  --db-host=localhost --db-name=DB --db-user=UTENTE --db-pass=PASS \
+  --url=https://nuovo-sito
+```
+
+Il codice si puo creare anche da WP-CLI:
+
+```bash
+wp stream-backup migration-code <percorso-backup> --repository=ID --days=7 --installer=wpssb-installer.php
+```
+
+**Installer generico**: ogni release pubblica anche `wpssb-installer.php` senza
+codice incorporato. Si usa allo stesso modo, incollando il codice `WPSSB1...` nel
+modulo web oppure passando `--code=WPSSB1...` da shell.
+
+> Il codice contiene le credenziali di lettura del repository, cifrate con la
+> password. Conserva codice e password separati, usa una validita breve e, dove
+> possibile, credenziali di sola lettura.
+
+## Ripristino manuale
+
+Resta disponibile per backup scaricati a mano o senza accesso al repository.
 
 1. Scarica dalla cartella del backup `files.tar.gz`, `database.sql.gz`, `manifest.json` e `restore.php`.
 2. Caricali nella radice web (vuota) della destinazione e crea un database vuoto.
@@ -347,6 +414,10 @@ powershell -ExecutionPolicy Bypass -File dev\integration.ps1
 # SFTP + MinIO (S3) + Nextcloud reale, incluse share pubbliche e ripristino a parti
 # default: aggiunge un file sorgente casuale di 512 MiB; -Quick lo omette
 powershell -ExecutionPolicy Bypass -File dev\storage-integration.ps1
+
+# ripristino one click: rollback da Nextcloud, S3 (runtime web) e SFTP, migrazioni
+# con installer incorporato (CLI) e generico (web, in una sotto-cartella)
+powershell -ExecutionPolicy Bypass -File dev\oneclick-integration.ps1
 ```
 
 La suite multi-repository usa credenziali effimere locali, testa anche un upload

@@ -172,6 +172,15 @@ class SftpStorage implements RemoteStorage {
 		return false === $data ? null : (string) $data;
 	}
 
+	/** Reads up to $length bytes from $offset (used to stream legacy single-file archives). */
+	public function getRange( string $path, int $offset, int $length ): string {
+		$data = $this->client()->get( $path, false, $offset, $length );
+		if ( false === $data ) {
+			throw $this->fail( 'Cannot read remote file ' . $path );
+		}
+		return (string) $data;
+	}
+
 	public function listDir( string $path ): array {
 		$raw = $this->client()->rawlist( $path );
 		if ( false === $raw ) {

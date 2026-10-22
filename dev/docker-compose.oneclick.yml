@@ -1,0 +1,9 @@
+# One-click restore test: the plugin is a writable copy, so a rollback can rewrite it like on a real site.
+services:
+  source:
+    volumes:
+      - plugincode:/var/www/html/wp-content/plugins/wp-sftp-stream-backup
+      - ../dist/wp-sftp-stream-backup:/plugin-src:ro
+
+volumes:
+  plugincode: {}

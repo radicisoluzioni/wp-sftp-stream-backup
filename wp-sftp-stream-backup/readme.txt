@@ -4,7 +4,7 @@ Tags: backup, sftp, restore, migration, database
 Requires at least: 5.4
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -123,6 +123,29 @@ WP-Cron needs site traffic. For large sites run the backup from a system cron, w
 
 == Restore ==
 
+= One-click restore (1.2) =
+
+Rollback: in Tools > SFTP Backup click *Load list* under Backups on the server, then *Restore* on a backup
+row and type the site domain to confirm. Or from the shell:
+
+    wp stream-backup restore <path> [--repository=ID] --yes
+
+The backup is streamed from the repository (SFTP, S3, Nextcloud WebDAV; not a
+public File Drop). Files and tables that are not in the backup are deleted;
+excluded paths/tables, wp-config.php, plugin settings and history are kept.
+No safety copy is made automatically.
+
+Migration: click *Migrate* (or run `wp stream-backup migration-code <path>
+[--repository=ID] [--days=7] [--installer=wpssb-installer.php]`), choose a
+password of at least 12 characters and download the installer with the code
+embedded. Upload it to the empty web root of the new server and open it in the
+browser, or run `WPSSB_MIGRATION_PASSWORD='...' php wpssb-installer.php
+--db-host=... --db-name=... --db-user=... --db-pass=... --url=https://new-site`.
+The generic `wpssb-installer.php` from the GitHub release asks for the code
+(or `--code=WPSSB1...`). The code contains read credentials for the repository:
+prefer read-only credentials and a short validity.
+
+= Manual restore =
 For format 2, download ALL parts, catalogs, descriptors, manifest and restore
 script of one generation. The File Drop owner downloads files from their account;
 upload-only links cannot retrieve them. Keep prefixed data filenames; the script
@@ -159,6 +182,13 @@ With WP-CLI the whole dump runs in a single `START TRANSACTION WITH CONSISTENT S
 * The restore keeps the original table prefix.
 
 == Changelog ==
+
+= 1.2.0 =
+* One-click restore: roll this site back to a listed backup from Tools > SFTP Backup or with `wp stream-backup restore`, streamed directly from SFTP, S3 or Nextcloud WebDAV (no archive download).
+* Rollback removes files and tables that are not in the backup, keeps excluded paths/tables, wp-config.php, plugin settings and backup history; typed site-domain confirmation.
+* Migration to a new server: password-encrypted migration code (AES-256-GCM, PBKDF2) plus an installer with the code embedded, or the generic `wpssb-installer.php` release asset.
+* Temporary self-removing restore runtime with token access, maintenance mode and resumable steps.
+* Transient connection errors on repository reads are retried; restore can replace files owned by another user when the folder is writable.
 
 = 1.1.1 =
 * Radici Soluzioni Informatiche logo and linked credits.

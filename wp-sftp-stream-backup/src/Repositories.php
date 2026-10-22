@@ -219,6 +219,7 @@ class Repositories {
 					'complete' => $complete, 'status' => $status,
 					'path' => $r['public'] ? $backup['id'] . '--' . $r['generation'] . '--' : $r['base'] . '/' . $backup['id'],
 					'db' => size_format( $backup['db_bytes'] ), 'files' => size_format( $backup['files_bytes'] ),
+					'format' => (int) ( $backup['format'] ?? 1 ),
 				);
 			}
 			return $rows;

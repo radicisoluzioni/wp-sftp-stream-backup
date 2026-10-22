@@ -37,4 +37,13 @@ if (Test-Path $zip) { Remove-Item -Force $zip }
 # bsdtar writes "/" separators, unlike Compress-Archive on Windows PowerShell 5.1.
 & tar.exe -a -c -f $zip -C $dist 'wp-sftp-stream-backup'
 if ($LASTEXITCODE -ne 0) { throw 'zip creation failed' }
-Write-Output "Built $target and $zip"
+
+# Generic migration installer (the migration code is pasted in its form).
+$installer = Join-Path $dist 'wpssb-installer.php'
+if (Test-Path $installer) { Remove-Item -Force $installer }
+$ErrorActionPreference = 'Continue'
+docker run --rm -v "${target}:/plugin:ro" -v "${dist}:/out" -v "${PSScriptRoot}:/dev-scripts:ro" php:7.4-cli php /dev-scripts/make-installer.php /plugin /out/wpssb-installer.php 2>&1 | Out-Null
+$code = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($code -ne 0 -or -not (Test-Path $installer)) { throw 'installer creation failed' }
+Write-Output "Built $target, $zip and $installer"

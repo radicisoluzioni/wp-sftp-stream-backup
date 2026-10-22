@@ -201,6 +201,22 @@
 				var p = el( 'td' );
 				p.appendChild( el( 'code', '', b.path ) );
 				tr.appendChild( p );
+				var act = el( 'td', 'wpssb-row-actions' );
+				if ( b.restorable ) {
+					var rb = el( 'button', 'button button-small', t.restore );
+					rb.type = 'button';
+					rb.addEventListener( 'click', function () {
+						openRestore( b );
+					} );
+					var mb = el( 'button', 'button button-small', t.migrate );
+					mb.type = 'button';
+					mb.addEventListener( 'click', function () {
+						openMigrate( b );
+					} );
+					act.appendChild( rb );
+					act.appendChild( mb );
+				}
+				tr.appendChild( act );
 				tbody.appendChild( tr );
 			} );
 			table.appendChild( tbody );
@@ -213,6 +229,134 @@
 		} ).catch( function ( e ) {
 			out.textContent = ( t.error || 'Error' ) + ': ' + e.message;
 		} );
+	}
+
+	/* ---------- one-click restore / migration ---------- */
+
+	var selected = null;
+
+	function showDialog( id, b ) {
+		var d = $( id );
+		selected = b;
+		d.querySelectorAll( '.wpssb-dialog-backup' ).forEach( function ( c ) {
+			c.textContent = b.path;
+		} );
+		var r = d.querySelector( '.wpssb-dialog-result' );
+		r.textContent = '';
+		r.className = 'wpssb-dialog-result';
+		if ( typeof d.showModal === 'function' ) {
+			d.showModal();
+		} else {
+			d.setAttribute( 'open', '' );
+		}
+		return d;
+	}
+
+	function dialogMessage( d, text, cls ) {
+		var r = d.querySelector( '.wpssb-dialog-result' );
+		r.textContent = text;
+		r.className = 'wpssb-dialog-result' + ( cls ? ' ' + cls : '' );
+	}
+
+	function openRestore( b ) {
+		showDialog( 'wpssb-restore-dialog', b );
+		$( 'wpssb-restore-confirm' ).value = '';
+		$( 'wpssb-restore-go' ).disabled = true;
+		$( 'wpssb-restore-confirm' ).focus();
+	}
+
+	function restoreGo() {
+		var d = $( 'wpssb-restore-dialog' );
+		var btn = $( 'wpssb-restore-go' );
+		btn.disabled = true;
+		dialogMessage( d, t.preparing );
+		post( 'restore_prepare', {
+			repository: selected.repository,
+			path: selected.path,
+			confirm: $( 'wpssb-restore-confirm' ).value
+		} ).then( function ( res ) {
+			if ( ! res.success ) {
+				throw new Error( ( res.data && res.data.message ) || '?' );
+			}
+			dialogMessage( d, t.redirecting, 'wpssb-ok' );
+			window.location.assign( res.data.url );
+		} ).catch( function ( e ) {
+			dialogMessage( d, ( t.error || 'Error' ) + ': ' + e.message, 'wpssb-err' );
+			btn.disabled = false;
+		} );
+	}
+
+	function openMigrate( b ) {
+		showDialog( 'wpssb-migrate-dialog', b );
+		$( 'wpssb-migrate-password' ).value = '';
+		$( 'wpssb-migrate-password2' ).value = '';
+		$( 'wpssb-migrate-code' ).value = '';
+		document.querySelector( '.wpssb-migrate-step1' ).hidden = false;
+		document.querySelector( '.wpssb-migrate-step2' ).hidden = true;
+		$( 'wpssb-migrate-go' ).hidden = false;
+		$( 'wpssb-migrate-go' ).disabled = false;
+		$( 'wpssb-migrate-download' ).hidden = true;
+		$( 'wpssb-migrate-copy' ).hidden = true;
+		$( 'wpssb-migrate-password' ).focus();
+	}
+
+	function migrateGo() {
+		var d = $( 'wpssb-migrate-dialog' );
+		var pw = $( 'wpssb-migrate-password' ).value;
+		if ( pw.length < 12 ) {
+			dialogMessage( d, t.pwShort, 'wpssb-err' );
+			return;
+		}
+		if ( pw !== $( 'wpssb-migrate-password2' ).value ) {
+			dialogMessage( d, t.pwMismatch, 'wpssb-err' );
+			return;
+		}
+		var btn = $( 'wpssb-migrate-go' );
+		btn.disabled = true;
+		dialogMessage( d, t.generating );
+		post( 'migration_code', {
+			repository: selected.repository,
+			path: selected.path,
+			password: pw,
+			days: $( 'wpssb-migrate-days' ).value
+		} ).then( function ( res ) {
+			if ( ! res.success ) {
+				throw new Error( ( res.data && res.data.message ) || '?' );
+			}
+			$( 'wpssb-migrate-password' ).value = '';
+			$( 'wpssb-migrate-password2' ).value = '';
+			$( 'wpssb-migrate-code' ).value = res.data.code;
+			document.querySelector( '.wpssb-migrate-expiry' ).textContent = ( t.expires || '%s' ).replace( '%s', res.data.expiresText );
+			document.querySelector( '.wpssb-migrate-step1' ).hidden = true;
+			document.querySelector( '.wpssb-migrate-step2' ).hidden = false;
+			btn.hidden = true;
+			$( 'wpssb-migrate-download' ).hidden = false;
+			$( 'wpssb-migrate-copy' ).hidden = false;
+			dialogMessage( d, '' );
+		} ).catch( function ( e ) {
+			dialogMessage( d, ( t.error || 'Error' ) + ': ' + e.message, 'wpssb-err' );
+			btn.disabled = false;
+		} );
+	}
+
+	function migrateDownload() {
+		var f = $( 'wpssb-installer-form' );
+		f.querySelector( 'input[name="code"]' ).value = $( 'wpssb-migrate-code' ).value;
+		f.submit();
+	}
+
+	function migrateCopy() {
+		var area = $( 'wpssb-migrate-code' );
+		var done = function () {
+			dialogMessage( $( 'wpssb-migrate-dialog' ), t.copied, 'wpssb-ok' );
+		};
+		if ( navigator.clipboard && window.isSecureContext ) {
+			navigator.clipboard.writeText( area.value ).then( done );
+		} else {
+			area.select();
+			document.execCommand( 'copy' );
+			done();
+		}
 	}
 
 	/* ---------- wiring ---------- */
@@ -236,6 +380,27 @@
 
 		$( 'wpssb-test' ).addEventListener( 'click', testConnection );
 		$( 'wpssb-list' ).addEventListener( 'click', loadList );
+
+		if ( $( 'wpssb-restore-dialog' ) ) {
+			$( 'wpssb-restore-confirm' ).addEventListener( 'input', function () {
+				$( 'wpssb-restore-go' ).disabled = this.value.trim().toLowerCase() !== String( t.confirmWord || '' ).toLowerCase();
+			} );
+			$( 'wpssb-restore-go' ).addEventListener( 'click', restoreGo );
+			[ 'wpssb-restore-form', 'wpssb-migrate-form' ].forEach( function ( id ) {
+				$( id ).addEventListener( 'keydown', function ( e ) {
+					if ( e.key === 'Enter' && e.target.tagName === 'INPUT' ) {
+						e.preventDefault();
+						var go = $( id === 'wpssb-restore-form' ? 'wpssb-restore-go' : 'wpssb-migrate-go' );
+						if ( ! go.disabled && ! go.hidden ) {
+							go.click();
+						}
+					}
+				} );
+			} );
+			$( 'wpssb-migrate-go' ).addEventListener( 'click', migrateGo );
+			$( 'wpssb-migrate-download' ).addEventListener( 'click', migrateDownload );
+			$( 'wpssb-migrate-copy' ).addEventListener( 'click', migrateCopy );
+		}
 
 		$( 'wpssb-start' ).addEventListener( 'click', function () {
 			var btn = this;

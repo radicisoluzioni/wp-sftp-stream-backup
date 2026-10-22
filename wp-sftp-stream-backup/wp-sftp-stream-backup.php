@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       WP SFTP Stream Backup
  * Description:       WordPress backups streamed to SFTP, S3 and Nextcloud, with automatic replicas and no local backup archives.
- * Version:           1.1.1
+ * Version:           1.2.0
  * Requires at least: 5.4
  * Requires PHP:      7.4
  * Author:            Radici Soluzioni Informatiche
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WPSSB_VERSION', '1.1.1' );
+define( 'WPSSB_VERSION', '1.2.0' );
 define( 'WPSSB_FILE', __FILE__ );
 define( 'WPSSB_DIR', plugin_dir_path( __FILE__ ) );
 

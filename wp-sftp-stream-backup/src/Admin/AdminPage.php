@@ -76,6 +76,18 @@ class AdminPage {
 					'backupList'    => __( 'Remote backups', 'wp-sftp-stream-backup' ),
 					'complete'      => __( 'complete', 'wp-sftp-stream-backup' ),
 					'incomplete'    => __( 'incomplete', 'wp-sftp-stream-backup' ),
+					'restore'       => __( 'Restore', 'wp-sftp-stream-backup' ),
+					'migrate'       => __( 'Migrate', 'wp-sftp-stream-backup' ),
+					'actions'       => __( 'Actions', 'wp-sftp-stream-backup' ),
+					'confirmWord'   => \WPSSB\Restore\OneClick::expectedConfirmation(),
+					'preparing'     => __( 'Preparing the restore…', 'wp-sftp-stream-backup' ),
+					'redirecting'   => __( 'Ready. Opening the restore page…', 'wp-sftp-stream-backup' ),
+					'pwShort'       => __( 'The password must be at least 12 characters long.', 'wp-sftp-stream-backup' ),
+					'pwMismatch'    => __( 'The passwords do not match.', 'wp-sftp-stream-backup' ),
+					'generating'    => __( 'Encrypting the code…', 'wp-sftp-stream-backup' ),
+					/* translators: %s: date and time */
+					'expires'       => __( 'Valid until %s. Keep the password separate from the code.', 'wp-sftp-stream-backup' ),
+					'copied'        => __( 'Copied.', 'wp-sftp-stream-backup' ),
 					'phases'        => array(
 						'init'      => __( 'Preparing', 'wp-sftp-stream-backup' ),
 						'db'        => __( 'Dumping database', 'wp-sftp-stream-backup' ),
@@ -370,8 +382,90 @@ class AdminPage {
 					<button type="button" class="button" id="wpssb-list"><?php esc_html_e( 'Load list', 'wp-sftp-stream-backup' ); ?></button>
 				</p>
 				<div id="wpssb-remote-list"></div>
+				<p class="description"><?php esc_html_e( 'Restore puts this site back to the selected backup, streaming it directly from the repository. Migrate generates a password-protected code and an installer to rebuild the site on another server.', 'wp-sftp-stream-backup' ); ?></p>
 				<p class="description"><?php esc_html_e( 'Download all files of the selected backup, including its manifest, catalogs, numbered parts and restore.php. File Drop history records uploads accepted, not remote verification. Legacy SFTP backups contain two complete archives.', 'wp-sftp-stream-backup' ); ?></p>
 			</div>
+
+			<dialog id="wpssb-restore-dialog" class="wpssb-dialog" aria-labelledby="wpssb-restore-title">
+				<form method="dialog" class="wpssb-dialog-body" id="wpssb-restore-form">
+					<h2 id="wpssb-restore-title"><?php esc_html_e( 'Restore this site', 'wp-sftp-stream-backup' ); ?></h2>
+					<p><?php esc_html_e( 'Backup:', 'wp-sftp-stream-backup' ); ?> <code class="wpssb-dialog-backup"></code></p>
+					<div class="wpssb-notice-box wpssb-warn">
+						<p><strong><?php esc_html_e( 'The current site will be replaced by this backup.', 'wp-sftp-stream-backup' ); ?></strong></p>
+						<ul>
+							<li><?php esc_html_e( 'Files and database tables that are not in the backup are deleted; excluded paths and tables are kept.', 'wp-sftp-stream-backup' ); ?></li>
+							<li><?php esc_html_e( 'wp-config.php is kept. The site is in maintenance mode until the restore ends.', 'wp-sftp-stream-backup' ); ?></li>
+							<li><?php esc_html_e( 'No safety copy is made automatically: start a new backup first if you may need the current state.', 'wp-sftp-stream-backup' ); ?></li>
+						</ul>
+					</div>
+					<label for="wpssb-restore-confirm">
+						<?php
+						printf(
+							/* translators: %s: site domain */
+							esc_html__( 'Type %s to confirm', 'wp-sftp-stream-backup' ),
+							'<code>' . esc_html( \WPSSB\Restore\OneClick::expectedConfirmation() ) . '</code>'
+						);
+						?>
+					</label>
+					<input type="text" class="regular-text" id="wpssb-restore-confirm" autocomplete="off" spellcheck="false">
+					<p class="wpssb-dialog-result" role="status" aria-live="polite"></p>
+					<div class="wpssb-dialog-actions">
+						<button type="button" class="button button-primary wpssb-danger" id="wpssb-restore-go" disabled><?php esc_html_e( 'Restore now', 'wp-sftp-stream-backup' ); ?></button>
+						<button type="submit" class="button" value="cancel"><?php esc_html_e( 'Cancel', 'wp-sftp-stream-backup' ); ?></button>
+					</div>
+				</form>
+			</dialog>
+
+			<dialog id="wpssb-migrate-dialog" class="wpssb-dialog" aria-labelledby="wpssb-migrate-title">
+				<form method="dialog" class="wpssb-dialog-body" id="wpssb-migrate-form">
+					<h2 id="wpssb-migrate-title"><?php esc_html_e( 'Migrate to a new server', 'wp-sftp-stream-backup' ); ?></h2>
+					<p><?php esc_html_e( 'Backup:', 'wp-sftp-stream-backup' ); ?> <code class="wpssb-dialog-backup"></code></p>
+					<p><?php esc_html_e( 'The migration code contains the repository credentials, encrypted with the password you choose here. On the new server upload the installer, open it in the browser and enter the password and the new database: the backup is streamed from the repository.', 'wp-sftp-stream-backup' ); ?></p>
+					<div class="wpssb-notice-box wpssb-warn"><p><?php esc_html_e( 'Anyone with the code and the password can read the repository: prefer read-only credentials and a short expiry.', 'wp-sftp-stream-backup' ); ?></p></div>
+					<div class="wpssb-migrate-step1">
+						<p>
+							<label for="wpssb-migrate-password"><?php esc_html_e( 'Password (at least 12 characters)', 'wp-sftp-stream-backup' ); ?></label><br>
+							<input type="password" class="regular-text" id="wpssb-migrate-password" autocomplete="new-password" minlength="12">
+						</p>
+						<p>
+							<label for="wpssb-migrate-password2"><?php esc_html_e( 'Repeat password', 'wp-sftp-stream-backup' ); ?></label><br>
+							<input type="password" class="regular-text" id="wpssb-migrate-password2" autocomplete="new-password" minlength="12">
+						</p>
+						<p>
+							<label for="wpssb-migrate-days"><?php esc_html_e( 'Valid for', 'wp-sftp-stream-backup' ); ?></label>
+							<select id="wpssb-migrate-days">
+								<?php foreach ( array( 1, 3, 7, 14, 30 ) as $days ) : ?>
+									<option value="<?php echo (int) $days; ?>" <?php selected( 7, $days ); ?>>
+										<?php
+										/* translators: %d: number of days */
+										echo esc_html( sprintf( _n( '%d day', '%d days', $days, 'wp-sftp-stream-backup' ), $days ) );
+										?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+						</p>
+					</div>
+					<div class="wpssb-migrate-step2" hidden>
+						<p>
+							<label for="wpssb-migrate-code"><?php esc_html_e( 'Migration code', 'wp-sftp-stream-backup' ); ?></label>
+							<textarea id="wpssb-migrate-code" class="large-text code" rows="4" readonly></textarea>
+						</p>
+						<p class="wpssb-migrate-expiry description"></p>
+					</div>
+					<p class="wpssb-dialog-result" role="status" aria-live="polite"></p>
+					<div class="wpssb-dialog-actions">
+						<button type="button" class="button button-primary" id="wpssb-migrate-go"><?php esc_html_e( 'Generate code', 'wp-sftp-stream-backup' ); ?></button>
+						<button type="button" class="button button-primary" id="wpssb-migrate-download" hidden><?php esc_html_e( 'Download installer with this code', 'wp-sftp-stream-backup' ); ?></button>
+						<button type="button" class="button" id="wpssb-migrate-copy" hidden><?php esc_html_e( 'Copy code', 'wp-sftp-stream-backup' ); ?></button>
+						<button type="submit" class="button" value="cancel"><?php esc_html_e( 'Close', 'wp-sftp-stream-backup' ); ?></button>
+					</div>
+				</form>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="wpssb-installer-form" hidden>
+					<input type="hidden" name="action" value="wpssb_installer">
+					<input type="hidden" name="code" value="">
+					<?php wp_nonce_field( 'wpssb_installer' ); ?>
+				</form>
+			</dialog>
 
 			<div class="wpssb-card">
 				<h2><?php esc_html_e( 'History', 'wp-sftp-stream-backup' ); ?></h2>

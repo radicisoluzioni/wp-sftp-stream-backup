@@ -270,4 +270,114 @@ class Command {
 			\WP_CLI::warning( 'No backup is running.' );
 		}
 	}
+
+	/**
+	 * Restores this site from a backup, streaming it directly from the repository.
+	 *
+	 * Files and tables not in the backup are deleted (excluded paths and tables are kept).
+	 * wp-config.php is preserved. No safety backup is made.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <path>
+	 * : Remote backup path as shown by `wp sftp-backup list`.
+	 *
+	 * [--repository=<id>]
+	 * : Repository id (defaults to the primary one).
+	 *
+	 * [--yes]
+	 * : Skip the confirmation.
+	 *
+	 * @when after_wp_load
+	 */
+	public function restore( $args, $assoc ) {
+		$all  = \WPSSB\Repositories::get();
+		$repo = (string) ( $assoc['repository'] ?? $all['primary'] );
+		$host = \WPSSB\Restore\OneClick::expectedConfirmation();
+		\WP_CLI::confirm( sprintf( 'Overwrite %s with backup %s? Files and tables not in the backup are deleted.', $host, $args[0] ), $assoc );
+		try {
+			$runtime = \WPSSB\Restore\OneClick::prepareRollback( $repo, (string) $args[0], $host );
+		} catch ( \Throwable $e ) {
+			\WP_CLI::error( $e->getMessage() );
+		}
+		$script = rtrim( str_replace( '\\', '/', ABSPATH ), '/' ) . '/' . $runtime['dir'] . '/run.php';
+		\WP_CLI::log( 'Restore runtime: ' . $script );
+		$env = getenv();
+		$env = is_array( $env ) ? $env : array();
+		$env['WPSSB_RUNTIME_TOKEN'] = $runtime['token'];
+		$php  = defined( 'PHP_BINARY' ) && PHP_BINARY ? PHP_BINARY : 'php';
+		$proc = proc_open( array( $php, $script ), array( 0 => STDIN, 1 => STDOUT, 2 => STDERR ), $pipes, null, $env );
+		if ( ! is_resource( $proc ) ) {
+			\WP_CLI::error( sprintf( 'Cannot start PHP. Resume with: WPSSB_RUNTIME_TOKEN=%s php %s', $runtime['token'], $script ) );
+		}
+		$code = proc_close( $proc );
+		if ( 0 !== $code ) {
+			\WP_CLI::error( sprintf( 'Restore interrupted. Resume with: WPSSB_RUNTIME_TOKEN=%s php %s', $runtime['token'], $script ) );
+		}
+		\WP_CLI::success( 'Site restored.' );
+	}
+
+	/**
+	 * Creates a password-protected migration code for restoring a backup on another server.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <path>
+	 * : Remote backup path as shown by `wp sftp-backup list`.
+	 *
+	 * [--repository=<id>]
+	 * : Repository id (defaults to the primary one).
+	 *
+	 * [--days=<days>]
+	 * : Validity in days (1-30).
+	 * ---
+	 * default: 7
+	 * ---
+	 *
+	 * [--installer=<file>]
+	 * : Also write the installer with the code embedded to this file.
+	 *
+	 * The password is read from the WPSSB_MIGRATION_PASSWORD environment variable or prompted.
+	 *
+	 * @subcommand migration-code
+	 * @when after_wp_load
+	 */
+	public function migration_code( $args, $assoc ) {
+		$all      = \WPSSB\Repositories::get();
+		$repo     = (string) ( $assoc['repository'] ?? $all['primary'] );
+		$password = (string) getenv( 'WPSSB_MIGRATION_PASSWORD' );
+		if ( '' === $password ) {
+			$password = self::askHidden( 'Migration password (min. 12 characters): ' );
+			if ( self::askHidden( 'Repeat password: ' ) !== $password ) {
+				\WP_CLI::error( 'The passwords do not match.' );
+			}
+		}
+		try {
+			$result = \WPSSB\Restore\OneClick::migrationCode( $repo, (string) $args[0], $password, (int) ( $assoc['days'] ?? 7 ) );
+			if ( ! empty( $assoc['installer'] ) ) {
+				if ( false === file_put_contents( (string) $assoc['installer'], \WPSSB\Restore\OneClick::installerSource( $result['code'] ) ) ) {
+					throw new \RuntimeException( 'Cannot write ' . $assoc['installer'] );
+				}
+				\WP_CLI::log( 'Installer written to ' . $assoc['installer'] );
+			}
+		} catch ( \Throwable $e ) {
+			\WP_CLI::error( $e->getMessage() );
+		}
+		\WP_CLI::line( $result['code'] );
+		\WP_CLI::success( 'Migration code valid until ' . gmdate( 'Y-m-d H:i', $result['expires'] ) . ' UTC.' );
+	}
+
+	private static function askHidden( string $prompt ): string {
+		fwrite( STDERR, $prompt );
+		$tty = '\\' !== DIRECTORY_SEPARATOR && function_exists( 'shell_exec' );
+		if ( $tty ) {
+			shell_exec( 'stty -echo 2>/dev/null' );
+		}
+		$line = fgets( STDIN );
+		if ( $tty ) {
+			shell_exec( 'stty echo 2>/dev/null' );
+		}
+		fwrite( STDERR, "\n" );
+		return rtrim( (string) $line, "\r\n" );
+	}
 }
