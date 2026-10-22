@@ -1,0 +1,129 @@
+.wpssb {
+	--wpssb-ink: #28332d;
+	--wpssb-muted: #59665e;
+	--wpssb-line: #dce3da;
+	--wpssb-lime: #c4d72f;
+	--wpssb-green: #354c29;
+	max-width: 1180px;
+	color: var(--wpssb-ink);
+}
+
+.wpssb [hidden] { display: none !important; }
+.wpssb *, .wpssb *::before, .wpssb *::after { box-sizing: border-box; }
+.wpssb a { color: #375526; }
+.wpssb a:hover { color: #1e3611; }
+.wpssb :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+	outline: 2px solid var(--wpssb-green);
+	outline-offset: 3px;
+}
+
+.wpssb .wpssb-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 24px;
+	padding: 28px 32px;
+	margin: 24px 0 0;
+	border: 1px solid var(--wpssb-line);
+	border-top: 4px solid var(--wpssb-lime);
+	border-radius: 14px 14px 0 0;
+	background: #fff;
+}
+.wpssb .wpssb-header h1 { padding: 0; color: var(--wpssb-ink); font-size: 28px; font-weight: 650; line-height: 1.3; }
+.wpssb .wpssb-header p { margin: 8px 0 0; color: var(--wpssb-muted); }
+.wpssb .wpssb-header .wpssb-eyebrow { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.wpssb .wpssb-brand { display: flex; align-items: center; gap: 14px; max-width: 340px; text-decoration: none; color: var(--wpssb-muted); font-size: 12px; }
+.wpssb .wpssb-brand img { display: block; flex-shrink: 0; width: 130px; height: 48px; }
+.wpssb .wpssb-brand strong { display: block; color: var(--wpssb-ink); font-size: 13px; }
+.wpssb .wpssb-nav { display: flex; gap: 8px; padding: 0 24px; background: #fff; border: 1px solid var(--wpssb-line); border-top: 0; border-radius: 0 0 14px 14px; }
+.wpssb .wpssb-nav a { padding: 14px 12px; border-bottom: 3px solid transparent; text-decoration: none; font-weight: 600; }
+.wpssb .wpssb-nav a[aria-current="page"] { border-color: var(--wpssb-lime); color: var(--wpssb-ink); }
+.wpssb .wpssb-intro { margin: 20px 4px; max-width: 900px; color: var(--wpssb-muted); line-height: 1.65; }
+.wpssb .wpssb-intro p { margin: 8px 0; }
+
+.wpssb .wpssb-card {
+	background: #fff;
+	border: 1px solid var(--wpssb-line);
+	border-radius: 12px;
+	box-shadow: 0 3px 12px rgba(28, 42, 24, .03);
+	margin: 20px 0;
+	padding: 20px 24px;
+	min-width: 0;
+}
+.wpssb .wpssb-card h2 { margin: 0 0 16px; font-size: 18px; line-height: 1.4; color: var(--wpssb-ink); }
+.wpssb .wpssb-card p { line-height: 1.65; }
+.wpssb #wpssb-run { border-top: 3px solid var(--wpssb-lime); }
+.wpssb .button { border-radius: 6px; min-height: 34px; padding: 2px 14px; }
+.wpssb .button-primary { background: var(--wpssb-green); border-color: var(--wpssb-green); color: #fff; }
+.wpssb .button-primary:hover, .wpssb .button-primary:focus { background: #263d1c; border-color: #263d1c; color: #fff; }
+.wpssb .button-primary:disabled { background: #e4e8e0 !important; color: #626b5d !important; border-color: #d1d9cc !important; }
+.wpssb #wpssb-start { padding: 6px 22px; font-weight: 600; }
+.wpssb .form-table { margin: 0; }
+.wpssb .form-table th { width: 210px; padding: 18px 16px 18px 0; color: var(--wpssb-ink); }
+.wpssb .form-table td { padding: 14px 0; }
+.wpssb :is(input[type="text"], input[type="password"], input[type="number"], input[type="email"], input[type="time"], select, textarea) { border-color: #9da99c; border-radius: 6px; max-width: 100%; }
+.wpssb textarea { padding: 10px; }
+.wpssb :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--wpssb-green); }
+.wpssb .description { color: var(--wpssb-muted); }
+.wpssb .form-table .description { overflow-wrap: anywhere; }
+.wpssb .form-table td > .description { display: inline-block; margin: 6px 0; }
+.wpssb details > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.wpssb details[open] > summary { margin-bottom: 12px; }
+.wpssb .wpssb-repository-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.wpssb .wpssb-repository-heading h2 { margin: 0; }
+.wpssb .wpssb-type { background: #eef3dc; color: #354c29; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; font-size: 11px; font-weight: 700; }
+.wpssb .wpssb-repository-toggles { display: flex; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--wpssb-line); padding: 0 0 16px; }
+.wpssb .wpssb-repository > .button { margin-right: 12px; }
+
+.wpssb .wpssb-status { overflow-wrap: anywhere; }
+.wpssb .wpssb-status > p:first-child { padding: 12px 0; line-height: 1.8; }
+.wpssb .wpssb-empty { color: var(--wpssb-muted); }
+.wpssb .wpssb-progress { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.wpssb .wpssb-progress li { background: #f4f6f1; padding: 14px; border-radius: 8px; margin: 0; line-height: 1.6; }
+.wpssb .wpssb-progress :is(.wpssb-current, .wpssb-warn, .wpssb-err) { grid-column: 1 / -1; }
+.wpssb .wpssb-current { color: var(--wpssb-muted); font-family: monospace; overflow-wrap: anywhere; }
+.wpssb .wpssb-copy { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--wpssb-line); }
+.wpssb .wpssb-copy strong { margin-right: auto; }
+.wpssb .wpssb-copy .wpssb-err { flex-basis: 100%; }
+.wpssb .wpssb-badge { border-radius: 20px; display: inline-block; font-size: 12px; font-weight: 600; line-height: 1.6; padding: 3px 10px; background: #eef0ed; color: #495448; }
+.wpssb .wpssb-running { background: #e8f0fb; color: #174f85; }
+.wpssb :is(.wpssb-done, .wpssb-verified) { background: #eaf3e4; color: #2e571d; }
+.wpssb .wpssb-failed { background: #fcecec; color: #9d2525; }
+.wpssb :is(.wpssb-cancelled, .wpssb-partial, .wpssb-accepted) { background: #fff2d5; color: #795000; }
+.wpssb .wpssb-warn { color: #795000; }
+.wpssb .wpssb-err { color: #a02323; }
+.wpssb progress { display: block; width: 100%; height: 12px; margin: 16px 0; border: 0; border-radius: 8px; overflow: hidden; accent-color: var(--wpssb-green); background: #edf0e8; }
+.wpssb progress::-webkit-progress-bar { background: #edf0e8; border-radius: 8px; }
+.wpssb progress::-webkit-progress-value { background: var(--wpssb-green); border-radius: 8px; }
+.wpssb progress::-moz-progress-bar { background: var(--wpssb-green); border-radius: 8px; }
+.wpssb .wpssb-log { background: #f4f6f1; border: 1px solid var(--wpssb-line); border-radius: 8px; max-height: 300px; overflow: auto; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.wpssb .wpssb-test-result { margin-top: 8px; overflow-wrap: anywhere; }
+.wpssb .wpssb-test-result.wpssb-ok { color: #2e571d; }
+.wpssb .wpssb-test-result.wpssb-fail { color: #a02323; }
+.wpssb :is(.wpssb-fp, .wpssb-test-result .code) { font-family: monospace; font-size: 14px; color: var(--wpssb-ink); user-select: all; }
+.wpssb .wpssb-tables { margin-top: 8px; max-height: 320px; overflow: auto; }
+.wpssb .wpssb-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--wpssb-line); border-radius: 8px; }
+.wpssb .wpssb-table-scroll table { border: 0; min-width: 680px; }
+.wpssb .widefat :is(td, th) { padding: 12px; vertical-align: top; overflow-wrap: anywhere; }
+.wpssb .widefat th { font-weight: 600; }
+.wpssb code { overflow-wrap: anywhere; }
+.wpssb .wpssb-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin: 24px 4px; color: var(--wpssb-muted); font-size: 12px; }
+.wpssb .wpssb-footer a { text-decoration: none; }
+.wpssb .wpssb-version { margin-left: 6px; }
+
+@media (max-width: 782px) {
+	.wpssb .wpssb-header { padding: 22px; align-items: flex-start; flex-direction: column; gap: 20px; }
+	.wpssb .wpssb-header h1 { font-size: 24px; }
+	.wpssb .wpssb-brand { max-width: 100%; }
+	.wpssb .wpssb-card { padding: 18px; }
+	.wpssb .wpssb-nav { padding: 0 12px; flex-wrap: wrap; gap: 0; }
+	.wpssb .form-table th { width: auto; padding: 12px 0 4px; }
+	.wpssb .form-table td { padding: 6px 0 14px; }
+	.wpssb .form-table :is(.regular-text, .large-text) { width: 100%; }
+	.wpssb .wpssb-progress { grid-template-columns: 1fr; }
+	.wpssb .button { margin-bottom: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wpssb * { scroll-behavior: auto !important; }
+}

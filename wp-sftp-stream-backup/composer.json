@@ -1,0 +1,47 @@
+{
+    "name": "wpssb/wp-sftp-stream-backup",
+    "description": "Full WordPress backup streamed directly to SFTP without using local disk space.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4",
+        "phpseclib/phpseclib": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "WPSSB\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "7.4.33"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "prefix-namespaces": [
+            "@php bin/strauss.phar"
+        ],
+        "post-install-cmd": [
+            "@prefix-namespaces"
+        ],
+        "post-update-cmd": [
+            "@prefix-namespaces"
+        ]
+    },
+    "extra": {
+        "strauss": {
+            "target_directory": "vendor-prefixed",
+            "namespace_prefix": "WPSSB\\Vendor\\",
+            "classmap_prefix": "WPSSB_Vendor_",
+            "constant_prefix": "WPSSB_VENDOR_",
+            "packages": [
+                "phpseclib/phpseclib"
+            ],
+            "delete_vendor_packages": false
+        }
+    }
+}

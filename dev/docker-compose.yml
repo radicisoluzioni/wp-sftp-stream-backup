@@ -1,0 +1,59 @@
+# Integration environment: source WordPress -> SFTP server -> restore target.
+name: wpssb-dev
+
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect"]
+      interval: 2s
+      retries: 60
+
+  sftp-init:
+    image: alpine:3
+    command: ["chown", "1001:100", "/data"]
+    volumes:
+      - sftpdata:/data
+
+  sftp:
+    image: atmoz/sftp:alpine
+    command: backup:secret:1001:100:upload
+    depends_on:
+      sftp-init:
+        condition: service_completed_successfully
+    volumes:
+      - sftpdata:/home/backup/upload
+      - ./keys/id_ed25519.pub:/home/backup/.ssh/keys/id_ed25519.pub:ro
+
+  source:
+    build: .
+    ports:
+      - "8081:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+      sftp:
+        condition: service_started
+    volumes:
+      - ../dist/wp-sftp-stream-backup:/var/www/html/wp-content/plugins/wp-sftp-stream-backup:ro
+      - ./scripts:/scripts:ro
+      - ./keys:/keys:ro
+
+  target:
+    build: .
+    # Skip the WordPress auto-install: the docroot must start empty.
+    entrypoint: ["docker-php-entrypoint"]
+    command: ["apache2-foreground"]
+    ports:
+      - "8082:8082"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - sftpdata:/sftpdata:ro
+      - ./scripts:/scripts:ro
+
+volumes:
+  sftpdata: {}

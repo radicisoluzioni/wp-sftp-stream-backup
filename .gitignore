@@ -1,0 +1,18 @@
+# Dependencies and generated build output
+/wp-sftp-stream-backup/vendor/
+/wp-sftp-stream-backup/vendor-prefixed/
+/dist/
+
+# Local test secrets and caches
+/dev/keys/
+.phpunit.result.cache
+*.log
+.env
+.env.*
+node_modules/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
